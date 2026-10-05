@@ -1,3 +1,4 @@
+import { mkdir, writeFile } from "node:fs/promises";
 import { Inngest } from "inngest";
 import { reports } from "./reports.js";
 
@@ -26,7 +27,7 @@ const makeReport = inngest.createFunction(
     // Runs once every attempt has failed, so clients polling see "failed" instead of "pending" forever.
     onFailure: async ({ event, error }) => {
       const { id, topic } = event.data.event.data;
-      reports.set(id, { id, topic, status: "failed", error: error.message });
+      reports.set(id, { ...reports.get(id), id, topic, status: "failed", error: error.message });
     },
   },
   async ({ event, step }) => {
@@ -35,7 +36,7 @@ const makeReport = inngest.createFunction(
     // Stand-in for a real slow task (an AI call, a big export).
     await step.sleep("do-the-slow-work", "8s");
 
-    return await step.run("build-report", () => {
+    const result = await step.run("build-report", () => {
       if (topic === "fail") throw new Error("The report oven is broken!");
 
       const result = {
@@ -43,9 +44,17 @@ const makeReport = inngest.createFunction(
         summary: `Everything worth knowing about ${topic}, made in the background.`,
         generatedAt: new Date().toISOString(),
       };
-      reports.set(id, { id, topic, status: "done", result });
+      reports.set(id, { ...reports.get(id), id, topic, status: "done", result, finishedAt: Date.now() });
       return result;
     });
+
+    // Extra: "email" the result. Writing outbox/<id>.txt stands in for sending mail from a job.
+    await step.run("send-email", async () => {
+      await mkdir("outbox", { recursive: true });
+      await writeFile(`outbox/${id}.txt`, `Subject: ${result.title}\n\n${result.summary}\n`);
+    });
+
+    return result;
   },
 );
 
@@ -63,4 +72,24 @@ const heartbeat = inngest.createFunction(
   },
 );
 
-export const functions = [sayHello, makeReport, heartbeat];
+// Extra: cron's most common real job is taking out the trash.
+// Every 5 minutes, delete done reports that finished more than 10 minutes ago.
+const cleanup = inngest.createFunction(
+  { id: "cleanup-old-reports", triggers: [{ cron: "*/5 * * * *" }] },
+  async ({ step }) => {
+    return await step.run("delete-old-reports", () => {
+      const cutoff = Date.now() - 10 * 60 * 1000;
+      let deleted = 0;
+      for (const [id, report] of reports) {
+        if (report.status === "done" && report.finishedAt < cutoff) {
+          reports.delete(id);
+          deleted += 1;
+        }
+      }
+      console.log(`cleanup: deleted ${deleted} old report(s)`);
+      return { deleted };
+    });
+  },
+);
+
+export const functions = [sayHello, makeReport, heartbeat, cleanup];

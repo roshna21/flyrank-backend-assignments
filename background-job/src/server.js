@@ -20,7 +20,7 @@ app.post("/reports", async (req, res) => {
   }
 
   const id = randomUUID();
-  reports.set(id, { id, topic, status: "pending" });
+  reports.set(id, { id, topic, status: "pending", createdAt: Date.now() });
 
   try {
     await inngest.send({ name: "report/requested", data: { id, topic } });
@@ -31,6 +31,11 @@ app.post("/reports", async (req, res) => {
   }
 
   res.status(202).json({ id, status: "pending" });
+});
+
+// Extra: the control panel, every report and its status.
+app.get("/reports", (req, res) => {
+  res.json([...reports.values()]);
 });
 
 // The status endpoint: clients poll this until the report is done.

@@ -15,14 +15,14 @@ The pattern: **accept fast → work in the background → report status.**
 Requires Node.js 20+. Two terminals, both from this folder:
 
 ```bash
-git clone https://github.com/roshna21/capstone.git
-cd capstone/background-job
+git clone https://github.com/roshna21/flyrank-backend-assignments.git
+cd flyrank-backend-assignments/background-job
 npm install
 npm run dev        # terminal 1: the API on http://localhost:3000
 ```
 
 ```bash
-cd capstone/background-job
+cd flyrank-backend-assignments/background-job
 npm run inngest    # terminal 2: Inngest Dev Server + dashboard on http://localhost:8288
 ```
 

@@ -24,6 +24,8 @@ const makeReport = inngest.createFunction(
     triggers: [{ event: "report/requested" }],
     // 1 attempt + 2 retries = 3 attempts, with growing waits (backoff) between them.
     retries: 2,
+    // Stretch: at most 2 reports are built at once; the rest wait in line.
+    concurrency: { limit: 2 },
     // Runs once every attempt has failed, so clients polling see "failed" instead of "pending" forever.
     onFailure: async ({ event, error }) => {
       const { id, topic } = event.data.event.data;
@@ -33,15 +35,33 @@ const makeReport = inngest.createFunction(
   async ({ event, step }) => {
     const { id, topic } = event.data;
 
+    // A quick first step. Once it finishes, Inngest saves its result and never re-runs it,
+    // even if the API restarts during the sleep below (see "restart experiment" in the README).
+    const facts = await step.run("gather-facts", () => {
+      console.log(`gather-facts ran for ${id}`);
+      return { sources: 3, gatheredAt: new Date().toISOString() };
+    });
+
     // Stand-in for a real slow task (an AI call, a big export).
     await step.sleep("do-the-slow-work", "8s");
 
-    const result = await step.run("build-report", () => {
+    const result = await step.run("build-report", async () => {
+      // Stretch, idempotency: if this report was already built (same event delivered twice), do nothing.
+      const existing = reports.get(id);
+      if (existing?.status === "done") {
+        console.log(`build-report skipped for ${id}: already done`);
+        return existing.result;
+      }
+
       if (topic === "fail") throw new Error("The report oven is broken!");
+
+      // 2 s of "rendering". Unlike step.sleep, this keeps a concurrency slot busy,
+      // so the limit of 2 is visible when several reports are built at once.
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       const result = {
         title: `The ${topic} report`,
-        summary: `Everything worth knowing about ${topic}, made in the background.`,
+        summary: `Everything worth knowing about ${topic}, from ${facts.sources} sources, made in the background.`,
         generatedAt: new Date().toISOString(),
       };
       reports.set(id, { ...reports.get(id), id, topic, status: "done", result, finishedAt: Date.now() });
@@ -51,7 +71,12 @@ const makeReport = inngest.createFunction(
     // Extra: "email" the result. Writing outbox/<id>.txt stands in for sending mail from a job.
     await step.run("send-email", async () => {
       await mkdir("outbox", { recursive: true });
-      await writeFile(`outbox/${id}.txt`, `Subject: ${result.title}\n\n${result.summary}\n`);
+      // "wx" fails if the file exists, so a duplicate run never sends the email twice.
+      try {
+        await writeFile(`outbox/${id}.txt`, `Subject: ${result.title}\n\n${result.summary}\n`, { flag: "wx" });
+      } catch (err) {
+        if (err.code !== "EEXIST") throw err;
+      }
     });
 
     return result;

@@ -1,4 +1,5 @@
 import { Inngest } from "inngest";
+import { reports } from "./reports.js";
 
 // The "assistant in the other room". In dev it talks to the local Dev Server.
 export const inngest = new Inngest({
@@ -15,4 +16,25 @@ const sayHello = inngest.createFunction(
   },
 );
 
-export const functions = [sayHello];
+// Stage 2: the slow work, triggered by POST /reports.
+const makeReport = inngest.createFunction(
+  { id: "make-report", triggers: [{ event: "report/requested" }] },
+  async ({ event, step }) => {
+    const { id, topic } = event.data;
+
+    // Stand-in for a real slow task (an AI call, a big export).
+    await step.sleep("do-the-slow-work", "8s");
+
+    return await step.run("build-report", () => {
+      const result = {
+        title: `The ${topic} report`,
+        summary: `Everything worth knowing about ${topic}, made in the background.`,
+        generatedAt: new Date().toISOString(),
+      };
+      reports.set(id, { id, topic, status: "done", result });
+      return result;
+    });
+  },
+);
+
+export const functions = [sayHello, makeReport];

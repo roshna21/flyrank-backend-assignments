@@ -11,3 +11,10 @@ npm run inngest    # terminal 2: the Inngest Dev Server + dashboard on http://lo
 ```
 
 Check it: `curl -i http://localhost:3000/health`
+
+Order a report, then poll its status:
+
+```bash
+curl -i -X POST http://localhost:3000/reports -H "Content-Type: application/json" -d '{"topic":"cats"}'
+curl http://localhost:3000/reports/<id>
+```

@@ -49,4 +49,18 @@ const makeReport = inngest.createFunction(
   },
 );
 
-export const functions = [sayHello, makeReport];
+// Stage 4: nobody asks, the clock starts it. Every minute (testing only; a real one would run daily).
+const heartbeat = inngest.createFunction(
+  { id: "heartbeat", triggers: [{ cron: "* * * * *" }] },
+  async ({ step }) => {
+    return await step.run("count-reports", () => {
+      const counts = { pending: 0, done: 0, failed: 0 };
+      for (const report of reports.values()) counts[report.status] += 1;
+      const line = `heartbeat: ${counts.pending} pending, ${counts.done} done, ${counts.failed} failed`;
+      console.log(line);
+      return line;
+    });
+  },
+);
+
+export const functions = [sayHello, makeReport, heartbeat];

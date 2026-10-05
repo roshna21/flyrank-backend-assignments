@@ -22,3 +22,10 @@ curl http://localhost:3000/reports/<id>
 ## Retries vs. validation
 
 A missing topic is a wrong *input*, so it is rejected at the door with a 400 and no job is created; a broken oven is a wrong *moment*, so the job is retried with backoff because trying again later might work.
+
+## Cron
+
+The `heartbeat` function runs on `* * * * *` (every minute) and logs a line like `heartbeat: 0 pending, 1 done, 1 failed`.
+
+- To run it every day at 08:00 the expression would be `0 8 * * *`.
+- To run it every Sunday at 22:00 the expression would be `0 22 * * 0`.

@@ -14,10 +14,21 @@ app.get("/health", (req, res) => {
 // The fast door: save the order, hand the work to Inngest, answer 202 right away.
 app.post("/reports", async (req, res) => {
   const { topic } = req.body ?? {};
+  // Bad input is rejected at the door: 400, and no job is ever created.
+  if (typeof topic !== "string" || topic.trim() === "") {
+    return res.status(400).json({ error: "\"topic\" is required and must be a non-empty string" });
+  }
+
   const id = randomUUID();
   reports.set(id, { id, topic, status: "pending" });
 
-  await inngest.send({ name: "report/requested", data: { id, topic } });
+  try {
+    await inngest.send({ name: "report/requested", data: { id, topic } });
+  } catch (err) {
+    reports.set(id, { id, topic, status: "failed", error: "Could not reach Inngest" });
+    console.error("inngest.send failed:", err.message);
+    return res.status(503).json({ id, status: "failed", error: "Job queue unavailable, try again later" });
+  }
 
   res.status(202).json({ id, status: "pending" });
 });

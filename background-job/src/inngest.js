@@ -18,7 +18,17 @@ const sayHello = inngest.createFunction(
 
 // Stage 2: the slow work, triggered by POST /reports.
 const makeReport = inngest.createFunction(
-  { id: "make-report", triggers: [{ event: "report/requested" }] },
+  {
+    id: "make-report",
+    triggers: [{ event: "report/requested" }],
+    // 1 attempt + 2 retries = 3 attempts, with growing waits (backoff) between them.
+    retries: 2,
+    // Runs once every attempt has failed, so clients polling see "failed" instead of "pending" forever.
+    onFailure: async ({ event, error }) => {
+      const { id, topic } = event.data.event.data;
+      reports.set(id, { id, topic, status: "failed", error: error.message });
+    },
+  },
   async ({ event, step }) => {
     const { id, topic } = event.data;
 
@@ -26,6 +36,8 @@ const makeReport = inngest.createFunction(
     await step.sleep("do-the-slow-work", "8s");
 
     return await step.run("build-report", () => {
+      if (topic === "fail") throw new Error("The report oven is broken!");
+
       const result = {
         title: `The ${topic} report`,
         summary: `Everything worth knowing about ${topic}, made in the background.`,

@@ -18,3 +18,7 @@ Order a report, then poll its status:
 curl -i -X POST http://localhost:3000/reports -H "Content-Type: application/json" -d '{"topic":"cats"}'
 curl http://localhost:3000/reports/<id>
 ```
+
+## Retries vs. validation
+
+A missing topic is a wrong *input*, so it is rejected at the door with a 400 and no job is created; a broken oven is a wrong *moment*, so the job is retried with backoff because trying again later might work.
